@@ -1,1 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My Flashcards System</title>
+    <style>
+        :root {
+            --primary: #FF3366;
+            --secondary: #2D3436;
+            --gradient: linear-gradient(135deg, #6C5CE7, #A29BFE);
+            --card-white: #ffffff;
+        }
 
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: var(--gradient);
+            background-attachment: fixed;
+            overflow: hidden; /* Prevents bouncing on mobile */
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- PERMANENT TOP BAR --- */
+        #header-bar {
+            width: 100%;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            z-index: 1000;
+        }
+
+        /* --- SCREEN MANAGEMENT --- */
+        .screen {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .active { display: flex; }
+
+        /* --- THE CARD --- */
+        .card-container {
+            width: 90vw;
+            max-width: 400px;
+            height: 60vh;
+            perspective: 1200px;
+            position: relative;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .card-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 20px;
+            background: var(--card-white);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 5px solid white;
+        }
+
+        .card-face img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #f0f0f0;
+        }
+
+        /* Temporary text if image is missing */
+        .debug-label {
+            position: absolute;
+            color: #ccc;
+            font-size: 0.8rem;
+            z-index: -1;
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+        }
+
+        /* --- TAP ZONES --- */
+        .tap-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+        }
+
+        .zone { height: 100%; }
+        .zone-prev { width: 30%; background: rgba(0,0,0,0.02); } /* 30% left */
+        .zone-flip { width: 40%; } /* 40% center */
+        .zone-next { width: 30%; background: rgba(0,0,0,0.02); } /* 30% right */
+
+        /* --- UI ELEMENTS --- */
+        h1 { color: white; margin-bottom: 10px; text-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .hint {
+            color: white;
+            margin-top: 20px;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- This bar stays at the top always -->
+    <div id="header-bar">
+        <span id="counter-text">FLASHCARDS</span>
+    </div>
+
+    <!-- 1. WELCOME SCREEN -->
+    <div id="screen-welcome" class="screen active">
+        <h1>Welcome</h1>
+        <p style="color:white">Ready to start?</p>
+        <button class="btn" onclick="startApp()">START</button>
+    </div>
+
+    <!-- 2. MAIN APP SCREEN -->
+    <div id="screen-app" class="screen">
+        <div class="card-container">
+            <div class="card-inner" id="card-inner">
+                <!-- Front -->
+                <div class="card-face card-front">
+                    <span class="debug-label">Front Image (c1f.jpg)</span>
+                    <img id="img-f" src="" alt="">
+                </div>
+                <!-- Back -->
+                <div class="card-face card-back">
+                    <span class="debug-label">Back Image (c1b.jpg)</span>
+                    <img id="img-b" src="" alt="">
+                </div>
+            </div>
+
+            <!-- Navigation Taps -->
+            <div class="tap-layer">
+                <div class="zone zone-prev" onclick="prev()"></div>
+                <div class="zone zone-flip" onclick="flip()"></div>
+                <div class="zone zone-next" onclick="next()"></div>
+            </div>
+        </div>
+        <div class="hint">Left: Prev | Center: Flip | Right: Next</div>
+    </div>
+
+    <!-- 3. END SCREEN -->
+    <div id="screen-end" class="screen">
+        <h1>Great Work!</h1>
+        <p style="color:white">You've reached the end.</p>
+        <button class="btn" onclick="startApp()">RESTART</button>
+    </div>
+
+    <script>
+        /* --- 1. CHANGE THIS NUMBER TO YOUR ACTUAL TOTAL --- */
+        const TOTAL_CARDS = 6; 
+        
+        let currentIndex = 1;
+        let isFlipped = false;
+
+        function updateUI() {
+            // Update the Counter
+            document.getElementById('counter-text').innerText = `CARD: ${currentIndex} / ${TOTAL_CARDS}`;
+            
+            // Update the Images
+            // It looks for /cards/c1f.jpg, etc.
+            document.getElementById('img-f').src = `cards/c${currentIndex}f.jpg`;
+            document.getElementById('img-b').src = `cards/c${currentIndex}b.jpg`;
+
+            // Reset flip animation
+            isFlipped = false;
+            document.getElementById('card-inner').classList.remove('is-flipped');
+        }
+
+        function startApp() {
+            currentIndex = 1;
+            document.getElementById('screen-welcome').classList.remove('active');
+            document.getElementById('screen-end').classList.remove('active');
+            document.getElementById('screen-app').classList.add('active');
+            updateUI();
+        }
+
+        function flip() {
+            isFlipped = !isFlipped;
+            document.getElementById('card-inner').classList.toggle('is-flipped', isFlipped);
+        }
+
+        function next() {
+            if (currentIndex < TOTAL_CARDS) {
+                currentIndex++;
+                updateUI();
+            } else {
+                document.getElementById('screen-app').classList.remove('active');
+                document.getElementById('screen-end').classList.add('active');
+                document.getElementById('counter-text').innerText = "FINISHED";
+            }
+        }
+
+        function prev() {
+            if (currentIndex > 1) {
+                currentIndex--;
+                updateUI();
+            }
+        }
+    </script>
+</body>
+</html>
